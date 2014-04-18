@@ -1,0 +1,47 @@
+<?php
+
+$parameter = "";
+
+function process_relationship($dato) {
+	// Usa variable global $parametro, que tiene el tema
+	global $parameter;
+	$friends = elgg_get_entities(array("guids" => $dato->guid));
+	$friend = $friends[0];
+    elgg_dump($friend->username);
+}
+
+function process_user($dato) {
+	// Usa variable global $parametro, que tiene el tema
+	global $parameter;
+
+    set_time_limit (5); // Increase the timeout to avoid problems with large databases
+
+	$users = elgg_get_entities(array("guids" => $dato->guid));
+	$user = $users[0];
+	elgg_dump($user->username . " : " . $user->name . ": " . $user->guid);
+
+    //elgg_dump($user);
+
+    $options = array(
+        'type' => 'user',
+        'relationship' => 'friend',
+        'relationship_guid' => $user->guid,
+        'inverse_relationship' => true,
+        'count' => true,
+        'offset' => 0
+       );
+    $count = elgg_get_entities_from_relationship($options);
+    if ($count == 0) return;
+    elgg_dump("Amigos: " . $count);
+
+    $options['count'] = false;
+    
+	$contenido = elgg_get_entities_from_relationship(array('types'=>'user', 'relationship' => 'friend', 'relationship_guid' => $user->guid,'callback'=>'process_relationship', 'limit' => false));
+}
+
+function get_users_listing($format) {
+	global $parameter;
+    $parameter = $format;
+
+	elgg_get_entities(array('types'=>'user','callback'=>'process_user', 'limit' => 1400));
+}
