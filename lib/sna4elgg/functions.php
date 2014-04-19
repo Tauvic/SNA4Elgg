@@ -11,17 +11,23 @@ define('CABECERAS', "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 \t</meta>
 \t<graph mode=\"dynamic\" defaultedgetype=\"directed\" timeformat=\"datetime\">\n\t\t");
 
-
-
 define('ATRIBS', "<attributes class=\"node\" mode=\"static\">
     \t\t<attribute id=\"0\" title=\"name\" type=\"string\"/>
     \t\t<attribute id=\"1\" title=\"datecreate\" type=\"string\"/>
-    \t\t<attribute id=\"3\" title=\"type\" type=\"string\"/>
+    \t\t<attribute id=\"3\" title=\"n-type\" type=\"string\"/>
     \t\t<attribute id=\"4\" title=\"content\" type=\"integer\"/>	
     \t</attributes>
-    \t<attributes class=\"node\" mode=\"dynamic\">
+    \t<attributes class=\"node\" mode=\"dynamic\"> 
     \t\t<attribute id=\"2\" title=\"datemodified\" type=\"string\"/>
-    \t\t</attributes>\n\t\t");
+    \t\t</attributes>\n\t\t
+    \t<attributes class=\"edge\" mode=\"static\">
+    \t\t<attribute id=\"0\" title=\"e-type\" type=\"string\"/>	
+    \t\t<attribute id=\"1\" title=\"e-subtype\" type=\"string\"/>		
+    \t\t</attributes>\n\t\t	
+    \t<attributes class=\"edge\" mode=\"dynamic\">
+    \t\t<attribute id=\"2\" title=\"Weight\" type=\"float\"/>
+    \t\t</attributes>\n\t\t"
+	);
 
 $users_file = void;
 $edges_file = void;
@@ -146,6 +152,9 @@ function process_user($dato) {
             break;
 
         case 'member':
+			$anno_types = array('fivestar','generic_comment','group_topic_post','task','task_state_changed','tp_view','likes','page','blog_revision');
+			$edgeCache = array();
+		
             $groups = $user->getGroups("", 0, 0); //Users do not use to belong to too many groups
             foreach($groups as $group) {
 			
@@ -160,14 +169,13 @@ function process_user($dato) {
                 fwrite($users_file, $temp); 
                 $i++;
             } 
-	
+
 			foreach($entity_types as $subtype) {			
 				$objects = $user->getObjects($subtype, 0); //Users do not have too many objects
-				foreach($objects as $object) { 
-
+				foreach($objects as $object) {
+				
 					$name = htmlspecialchars(($object->title) ? $object->title : $object->name);
-					$name = ($name) ? $name : $object->getSubtype();
-										
+					$name = ($name) ? $name : $object->getSubtype();									
 					$temp = "\n\t<node id=\"" . $object->guid 
 						. "\" label=\"" . $name . "\" start=\"" 
 						. date('Y-m-d H:i:s', $object->time_created)
@@ -179,7 +187,6 @@ function process_user($dato) {
 						\t</attvalues>\n\t</node>\n";
 					fwrite($users_file, $temp);
 					
-					$anno_types = array('fivestar','generic_comment','group_topic_post','task','task_state_changed','tp_view','likes','page','blog_revision');
 					foreach($anno_types as $anno_type) {					
 						$annotations = $object->getAnnotations($anno_type);						
 						foreach($annotations as $annotation) {
@@ -214,12 +221,56 @@ function process_user($dato) {
 								 . "\"/>"; 
 							fwrite($users_file, $temp); 
 							$i++;						
+							
+							//Add edge person -> person type="interaction" subtype = $anno_type
+							//This is a interaction between two persons
+							//fwrite($users_file, print_r($edgeCache,TRUE)); 
+							//$annoType=$anno_type;
+							$annoType='All';
+							$typeKey = $annotation->owner_guid.'->'.$user->guid.'.'.$annoType;								
+							$dateKey = date('Y-m-d', $annotation->time_created);
+							if ($edgeCache[$typeKey]['values'][$dateKey]) {
+								$edgeCache[$typeKey]['values'][$dateKey]+=1;
+							} else {
+								if ($edgeCache[$typeKey]) {
+									$edgeCache[$typeKey]['values'][$dateKey] = 1;
+								} else {
+									$edgeCache[$typeKey]= array(
+														'source' => $annotation->owner_guid,
+														'type' => $annoType, 
+														'values' => array($dateKey => '1')
+														);																
+								}
+							}
+
 						};						
 					}
-
 				} 			
 			}			
 		
+			//fwrite($users_file, print_r($edgeCache,TRUE)); 
+			foreach ($edgeCache as $k => $t) {
+			
+				$temp = "\n<edge id=\"" . $i 
+					 . "\" source=\"" . $t['source']
+					 . "\" target=\"" . $user->guid
+					 . "\" label=\"response"
+					 . "\" e-type=\"" . $t['type']
+					  . "\"><attvalues>";
+				$values=$t['values'];
+				ksort($values);
+				//fwrite($users_file, print_r($values,TRUE)); 
+				$tv=0;
+				while ($cv = current($values)){
+					$tv+=$cv;
+					$ck=key($values);
+					$next = next($values);					
+					$temp .= "\n<attvalue for=\"2\" value=\"".$tv."\" start=\"".$ck."\" end=\"".key($values)."\"/>";					
+				}
+				$temp .= "</attvalues></edge>"; 
+				fwrite($users_file, $temp); 
+				$i++;						
+			} 
             break;
 
     }
@@ -279,7 +330,6 @@ function generate_graph($anon, $_relationship) {
         'limit' => 0)
     );
 
-
     fwrite($edges_file, "\n\t</edges>\n</graph>\n</gexf>\n");
 
     /**************************    **************************/
@@ -311,4 +361,3 @@ function generate_graph($anon, $_relationship) {
     unlink($temp_edges);
 
 }
-
